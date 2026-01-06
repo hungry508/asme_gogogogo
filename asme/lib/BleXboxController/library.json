@@ -1,0 +1,10 @@
+{
+    "name": "BleXboxController",
+    "version": "1.0.0",
+    "keywords": "xbox, ble, gamepad, esp32",
+    "frameworks": ["arduino"],
+    "platforms": ["espressif32"],
+    "dependencies": {
+        "tbekas/BLE-Gamepad-Client": "^0.11.0"
+    }
+}
