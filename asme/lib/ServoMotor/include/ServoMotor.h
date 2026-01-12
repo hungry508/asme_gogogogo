@@ -7,8 +7,7 @@ class MotorControl {
 public:
     MotorControl(int pin);
     void setup();
-    void turnMax();//轉到180度
-    void turnMin();//轉到0度
+    void write(int angle);
 private:
     Servo _servo;
     int _pin;

@@ -2,11 +2,22 @@
 #include <BleXboxController.h> 
 #include <ServoMotor.h>
 #include <N20motor.h>
+#include <ESP32Servo.h>
 
 // 全域物件
 BleXboxController ble;
-MotorControl motorControl(18);  // GPIO18 控制舵機
+MotorControl ServoA(18);//GPIO18
+MotorControl ServoY(19);//GPIO19
 N20Motor n20;
+
+//Servo
+int servoDirectionA = 1;
+int servoDirectionY = 1;
+bool wasPressedA = false;
+bool wasPressedY = false;
+const float servoSpeed = 2;//速度
+float servoAngleA = 0;
+float servoAngleY = 0;
 
 // N20 馬達控制 (L298N)
 #define N20_ENA 12   // PWM 速度
@@ -50,16 +61,80 @@ void controlN20Motor(float leftY, float leftX) {
     }
 }
 
+void controlServoMotor() {
+    bool isPressedA = ble.getButtonA(); // 使用 A 鍵控制
+    bool isPressedY = ble.getButtonY(); // 使用 Y 鍵控制
+
+        //A
+        if (isPressedA) {
+            // --- 動作中 ---
+            // 根據方向緩慢增減角度
+            servoAngleA += (servoDirectionA * servoSpeed);
+            
+            // 邊界保護：防止超出 0~180 度
+            if (servoAngleA >= 180) {
+                servoAngleA = 180;
+                // 到達頂點時，如果還按著，可以選擇停住或自動反轉
+            } else if (servoAngleA <= 0) {
+                servoAngleA = 0;
+            }
+
+            ServoA.write((int)servoAngleA);
+            wasPressedA = true; // 標記目前正在按住
+        } 
+        else {
+            // --- 放開按鈕的一瞬間 ---
+            if (wasPressedA) {
+                // 只有在剛放開的那一刻，切換下一次的方向
+                servoDirectionA *= -1; 
+                wasPressedA = false; 
+                Serial.printf("放開按鈕，下次方向將反轉。目前角度: %.1f\n", servoAngleA);
+            }
+        }
+
+        //Y
+        if (isPressedY) {
+            // --- 動作中 ---
+            // 根據方向緩慢增減角度
+            servoAngleY += (servoDirectionY * servoSpeed);
+            
+            // 邊界保護：防止超出 0~180 度
+            if (servoAngleY >= 180) {
+                servoAngleY = 180;
+                // 到達頂點時，如果還按著，可以選擇停住或自動反轉
+            } else if (servoAngleY <= 0) {
+                servoAngleY = 0;
+            }
+
+            ServoY.write((int)servoAngleY);
+            wasPressedY = true; // 標記目前正在按住
+        } 
+        else {
+            // --- 放開按鈕的一瞬間 ---
+            if (wasPressedY) {
+                // 只有在剛放開的那一刻，切換下一次的方向
+                servoDirectionY *= -1; 
+                wasPressedY = false; 
+                Serial.printf("放開按鈕，下次方向將反轉。目前角度: %.1f\n", servoAngleY);
+            }
+        }
+    }
+
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    Serial.println("左搖桿: N20 前後 | A/Y: 舵機轉動 | 按後蓋PAIR配對");
+    
+    // 在舵機初始化前統一分配所有定時器
+    ESP32PWM::allocateTimer(0);
+    ESP32PWM::allocateTimer(1);
+    ESP32PWM::allocateTimer(2);
+    ESP32PWM::allocateTimer(3);
     
     ble.begin();           // BLE Xbox
-    motorControl.setup();  // 舵機
+    ServoA.setup();  // 舵機
+    ServoY.setup();  // 舵機
     setupN20Motor();       // N20 馬達
     
-    Serial.println("就緒！");
 }
 
 void loop() {
@@ -69,29 +144,26 @@ void loop() {
         float lx = ble.getLeftX();
         float ly = ble.getLeftY();
         
-        Serial.printf("[連線] LX:%.2f LY:%.2f RX:%.2f RY:%.2f LT:%.2f RT:%.2f | ",
-                     lx, ly, ble.getRightX(), ble.getRightY(), ble.getLT(), ble.getRT());
+        /*Serial.printf("[連線] LX:%.2f LY:%.2f RX:%.2f RY:%.2f LT:%.2f RT:%.2f | ",
+                     lx, ly, ble.getRightX(), ble.getRightY(), ble.getLT(), ble.getRT());*/
         
         // ★★★ N20 馬達控制 ★★★
         controlN20Motor(ly, lx);
         
-        // 原有舵機按鈕控制
-        if (ble.getButtonA()) {
-            Serial.print(" | A ");
-            motorControl.turnMax();  // 舵機 180°
-        }
+        // ★★★ 舵機控制 ★★★
+        controlServoMotor();
+
+        //按鈕顯示
+        /*if (ble.getButtonA()) Serial.print(" | A ");
         if (ble.getButtonB()) Serial.print(" | B ");
         if (ble.getButtonX()) Serial.print(" | X ");
-        if (ble.getButtonY()) {
-            Serial.print(" | Y ");
-            motorControl.turnMin();  // 舵機 0°
-        }
+        if (ble.getButtonY()) Serial.print(" | Y ");
         if (ble.getLB()) Serial.print(" | LB ");
         if (ble.getRB()) Serial.print(" | RB ");
         if (ble.getDpadUp()) Serial.print(" | ↑ ");
         if (ble.getDpadDown()) Serial.print(" | ↓ ");
         if (ble.getDpadLeft()) Serial.print(" | ← ");
-        if (ble.getDpadRight()) Serial.print(" | → ");
+        if (ble.getDpadRight()) Serial.print(" | → ");*/
         
         Serial.println();
     } else {

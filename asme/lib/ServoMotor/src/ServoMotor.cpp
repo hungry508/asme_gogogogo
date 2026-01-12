@@ -3,16 +3,17 @@
 MotorControl::MotorControl(int pin) : _pin(pin) {}
 
 void MotorControl::setup() {
-    // 分配硬體定時器並初始化
-    ESP32PWM::allocateTimer(0); 
+    // 設定舵機參數
     _servo.setPeriodHertz(50);
     _servo.attach(_pin, 500, 2400);
+    ESP32PWM::allocateTimer(0);
+    // 初始位置
+    _servo.write(0);
+    delay(50);
 }
 
-void MotorControl::turnMax() {
-    _servo.write(180); // 轉到180度
-}
-
-void MotorControl::turnMin() {
-    _servo.write(0); // 轉到0度
+void MotorControl::write(int angle) {
+    if (angle >= 0 && angle <= 180) {
+        _servo.write(angle);
+    }
 }
