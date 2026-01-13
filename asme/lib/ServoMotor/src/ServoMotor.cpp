@@ -1,12 +1,11 @@
 #include "ServoMotor.h"
-
+//紅線GND 黃線GPIO 棕線VCC
 MotorControl::MotorControl(int pin) : _pin(pin) {}
 
-void MotorControl::setup() {
+void MotorControl::setupServoMotor() {
     // 設定舵機參數
     _servo.setPeriodHertz(50);
     _servo.attach(_pin, 500, 2400);
-    ESP32PWM::allocateTimer(0);
     // 初始位置
     _servo.write(0);
     delay(50);

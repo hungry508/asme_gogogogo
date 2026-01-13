@@ -6,7 +6,7 @@
 class MotorControl {
 public:
     MotorControl(int pin);
-    void setup();
+    void setupServoMotor();
     void write(int angle);
 private:
     Servo _servo;

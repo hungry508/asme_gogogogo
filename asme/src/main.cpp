@@ -8,16 +8,24 @@
 BleXboxController ble;
 MotorControl ServoA(18);//GPIO18
 MotorControl ServoY(19);//GPIO19
+MotorControl ServoX(25);//GPIO25
+MotorControl ServoB(26);//GPIO26
 N20Motor n20;
 
 //Servo
 int servoDirectionA = 1;
 int servoDirectionY = 1;
+int servoDirectionX = 1;
+int servoDirectionB = 1;
 bool wasPressedA = false;
 bool wasPressedY = false;
-const float servoSpeed = 2;//速度
+bool wasPressedX = false;
+bool wasPressedB = false;
+const float servoSpeed = 4;//速度
 float servoAngleA = 0;
 float servoAngleY = 0;
+float servoAngleX = 0;
+float servoAngleB = 0;
 
 // N20 馬達控制 (L298N)
 #define N20_ENA 12   // PWM 速度
@@ -64,6 +72,8 @@ void controlN20Motor(float leftY, float leftX) {
 void controlServoMotor() {
     bool isPressedA = ble.getButtonA(); // 使用 A 鍵控制
     bool isPressedY = ble.getButtonY(); // 使用 Y 鍵控制
+    bool isPressedX = ble.getButtonX(); // 使用 X 鍵控制
+    bool isPressedB = ble.getButtonB(); // 使用 B 鍵控制
 
         //A
         if (isPressedA) {
@@ -118,7 +128,61 @@ void controlServoMotor() {
                 Serial.printf("放開按鈕，下次方向將反轉。目前角度: %.1f\n", servoAngleY);
             }
         }
-    }
+
+        //X
+        if (isPressedX) {
+            // --- 動作中 ---
+            // 根據方向緩慢增減角度
+            servoAngleX += (servoDirectionX * servoSpeed);
+            
+            // 邊界保護：防止超出 0~180 度
+            if (servoAngleX >= 180) {
+                servoAngleX = 180;
+                // 到達頂點時，如果還按著，可以選擇停住或自動反轉
+            } else if (servoAngleX <= 0) {
+                servoAngleX = 0;
+            }
+
+            ServoX.write((int)servoAngleX);
+            wasPressedX = true; // 標記目前正在按住
+        } 
+        else {
+            // --- 放開按鈕的一瞬間 ---
+            if (wasPressedX) {
+                // 只有在剛放開的那一刻，切換下一次的方向
+                servoDirectionX *= -1; 
+                wasPressedX = false; 
+                Serial.printf("放開按鈕，下次方向將反轉。目前角度: %.1f\n", servoAngleX);
+            }
+        }
+
+        //B
+        if (isPressedB) {
+            // --- 動作中 ---
+            // 根據方向緩慢增減角度
+            servoAngleB += (servoDirectionB * servoSpeed);
+            
+            // 邊界保護：防止超出 0~180 度
+            if (servoAngleB >= 180) {
+                servoAngleB = 180;
+                // 到達頂點時，如果還按著，可以選擇停住或自動反轉
+            } else if (servoAngleB <= 0) {
+                servoAngleB = 0;
+            }
+
+            ServoB.write((int)servoAngleB);
+            wasPressedB = true; // 標記目前正在按住
+        } 
+        else {
+            // --- 放開按鈕的一瞬間 ---
+            if (wasPressedB) {
+                // 只有在剛放開的那一刻，切換下一次的方向
+                servoDirectionB *= -1; 
+                wasPressedB = false; 
+                Serial.printf("放開按鈕，下次方向將反轉。目前角度: %.1f\n", servoAngleB);
+            }
+        }
+}
 
 void setup() {
     Serial.begin(115200);
@@ -131,8 +195,10 @@ void setup() {
     ESP32PWM::allocateTimer(3);
     
     ble.begin();           // BLE Xbox
-    ServoA.setup();  // 舵機
-    ServoY.setup();  // 舵機
+    ServoA.setupServoMotor();  // 舵機A
+    ServoY.setupServoMotor();  // 舵機Y
+    ServoX.setupServoMotor();  // 舵機X
+    ServoB.setupServoMotor();  // 舵機B
     setupN20Motor();       // N20 馬達
     
 }
@@ -144,8 +210,6 @@ void loop() {
         float lx = ble.getLeftX();
         float ly = ble.getLeftY();
         
-        /*Serial.printf("[連線] LX:%.2f LY:%.2f RX:%.2f RY:%.2f LT:%.2f RT:%.2f | ",
-                     lx, ly, ble.getRightX(), ble.getRightY(), ble.getLT(), ble.getRT());*/
         
         // ★★★ N20 馬達控制 ★★★
         controlN20Motor(ly, lx);
