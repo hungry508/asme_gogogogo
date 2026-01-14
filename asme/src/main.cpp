@@ -8,8 +8,8 @@
 BleXboxController ble;
 MotorControl ServoA(18);//GPIO18
 MotorControl ServoY(19);//GPIO19
-MotorControl ServoX(25);//GPIO25
-MotorControl ServoB(26);//GPIO26
+MotorControl ServoX(21);//GPIO21
+MotorControl ServoB(22);//GPIO22
 N20Motor n20;
 
 //Servo
@@ -31,41 +31,57 @@ float servoAngleB = 0;
 #define N20_ENA 12   // PWM 速度
 #define N20_IN1 14   // 方向1
 #define N20_IN2 27   // 方向2
+#define N20_ENB 33   // PWM 速度
+#define N20_IN3 26   // 方向3
+#define N20_IN4 25   // 方向4
 #define DEADZONE 0.15f
+#define MAX_PWM 200
 
 void setupN20Motor() {
     pinMode(N20_ENA, OUTPUT);
     pinMode(N20_IN1, OUTPUT);
     pinMode(N20_IN2, OUTPUT);
+    pinMode(N20_ENB, OUTPUT);
+    pinMode(N20_IN3, OUTPUT);
+    pinMode(N20_IN4, OUTPUT);
     analogWrite(N20_ENA, 0);  // 初始停止
+    analogWrite(N20_ENB, 0);  // 初始停止
 }
 
-void controlN20Motor(float leftY, float leftX) {
-    // 死區處理
-    float speed = (abs(leftY) > DEADZONE) ? leftY : 0.0f;
-    
-    int pwmSpeed = (int)(abs(speed) * 200);  // 最大 200 PWM 保護 N20
-    
-    if (pwmSpeed > 255) pwmSpeed = 255;
-    
-    if (speed > 0) {           // 前進
-        analogWrite(N20_ENA, pwmSpeed);
-        digitalWrite(N20_IN1, HIGH);
-        digitalWrite(N20_IN2, LOW);
-        Serial.printf("前進 %d PWM", pwmSpeed);
-    } else if (speed < 0) {    // 後退
-        analogWrite(N20_ENA, pwmSpeed);
-        digitalWrite(N20_IN1, LOW);
-        digitalWrite(N20_IN2, HIGH);
-        Serial.printf("後退 %d PWM", pwmSpeed);
+//前進後退
+void setMotor(int speed, int pinEN, int pinINA, int pinINB) {
+    if (speed > MAX_PWM) speed = MAX_PWM;
+    if (speed < -MAX_PWM) speed = -MAX_PWM;
+
+    if (speed > 0) {
+        digitalWrite(pinINA, HIGH);
+        digitalWrite(pinINB, LOW);
+        analogWrite(pinEN, speed);
+    } else if (speed < 0) {
+        digitalWrite(pinINA, LOW);
+        digitalWrite(pinINB, HIGH);
+        analogWrite(pinEN, -speed);
     } else {
-        analogWrite(N20_ENA, 0);
-        Serial.print("停止");
+        digitalWrite(pinINA, LOW);
+        digitalWrite(pinINB, LOW);
+        analogWrite(pinEN, 0);
     }
-    
-    // X 軸狀態顯示
-    if (abs(leftX) > DEADZONE) {
-        Serial.printf(" 轉向:%.2f", leftX);
+}
+void controlN20Motor(float ly, float lx) {
+    float throttle =(abs(ly) > DEADZONE) ? ly : 0.0f; // 前後
+    float steering =(abs(lx) > DEADZONE) ? lx : 0.0f; // 左右
+
+    float leftSpeedVal = throttle - steering;
+    float rightSpeedVal = throttle + steering;
+
+    int leftPWM = (int)(leftSpeedVal * MAX_PWM);
+    int rightPWM = (int)(rightSpeedVal * MAX_PWM);
+
+    setMotor(leftPWM, N20_ENA, N20_IN1, N20_IN2); // 控制馬達A
+    setMotor(rightPWM, N20_ENB, N20_IN3, N20_IN4); // 控制馬達B
+
+    if (abs(throttle) > 0 || abs(steering) > 0) {
+        Serial.printf("L: %d | R: %d (Y:%.2f X:%.2f)\n", leftPWM, rightPWM, throttle, steering);
     }
 }
 
