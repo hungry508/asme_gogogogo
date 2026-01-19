@@ -1,5 +1,5 @@
 #include "ServoMotor.h"
-//紅線GND 黃線GPIO 棕線VCC
+//紅線VCC 黃線GPIO 棕線GND
 MotorControl::MotorControl(int pin) : _pin(pin) {}
 
 void MotorControl::setupServoMotor() {
