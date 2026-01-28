@@ -1,18 +1,25 @@
 #include <Arduino.h>
 #include <BleXboxController.h> 
 #include <ServoMotor.h>
+#include <MG996R.h>
 #include <N20motor.h>
 #include <ESP32Servo.h>
 
-// 全域物件
 BleXboxController ble;
-MotorControl ServoA(18);//GPIO18
-MotorControl ServoY(19);//GPIO19
-MotorControl ServoX(21);//GPIO21
-MotorControl ServoB(22);//GPIO22
+MotorControl ServoA(18);
+MotorControl ServoY(19);
+MotorControl ServoX(21);
+MotorControl ServoB(22);
 N20Motor n20;
+MG996R mg996r(23);
 
-//Servo
+// ★★★ MG996R控制變數（修復編譯錯誤） ★★★
+static float mgTargetSpeed = 0.0f;      // 0停, 1.0正轉, -1.0反轉
+static bool lastLBState = false;        // 上次LB狀態
+static unsigned long lastLBPress = 0;   // 上次按下時間
+const unsigned long DEBOUNCE = 300;     // 防抖300ms
+
+
 int servoDirectionA = 1;
 int servoDirectionY = 1;
 int servoDirectionX = 1;
@@ -21,19 +28,22 @@ bool wasPressedA = false;
 bool wasPressedY = false;
 bool wasPressedX = false;
 bool wasPressedB = false;
-const float servoSpeed = 4;//速度
+const float servoSpeed = 4;
 float servoAngleA = 0;
 float servoAngleY = 0;
 float servoAngleX = 0;
 float servoAngleB = 0;
 
-// N20 馬達控制 (L298N)
-#define N20_ENA 12   // PWM 速度
-#define N20_IN1 14   // 方向1
-#define N20_IN2 27   // 方向2
-#define N20_ENB 33   // PWM 速度
-#define N20_IN3 26   // 方向3
-#define N20_IN4 25   // 方向4
+static int mgDirection = 1;
+static bool wasPressedLB = false;
+static float mgAngle = 90.0f;
+
+#define N20_ENA 12
+#define N20_IN1 14
+#define N20_IN2 27
+#define N20_ENB 33
+#define N20_IN3 26
+#define N20_IN4 25
 #define DEADZONE 0.15f
 #define MAX_PWM 200
 
@@ -44,11 +54,10 @@ void setupN20Motor() {
     pinMode(N20_ENB, OUTPUT);
     pinMode(N20_IN3, OUTPUT);
     pinMode(N20_IN4, OUTPUT);
-    analogWrite(N20_ENA, 0);  // 初始停止
-    analogWrite(N20_ENB, 0);  // 初始停止
+    analogWrite(N20_ENA, 0);
+    analogWrite(N20_ENB, 0);
 }
 
-//前進後退
 void setMotor(int speed, int pinEN, int pinINA, int pinINB) {
     if (speed > MAX_PWM) speed = MAX_PWM;
     if (speed < -MAX_PWM) speed = -MAX_PWM;
@@ -67,9 +76,10 @@ void setMotor(int speed, int pinEN, int pinINA, int pinINB) {
         analogWrite(pinEN, 0);
     }
 }
+
 void controlN20Motor(float ly, float lx) {
-    float throttle =(abs(ly) > DEADZONE) ? ly : 0.0f; // 前後
-    float steering =(abs(lx) > DEADZONE) ? lx : 0.0f; // 左右
+    float throttle = (abs(ly) > DEADZONE) ? ly : 0.0f;
+    float steering = (abs(lx) > DEADZONE) ? lx : 0.0f;
 
     float leftSpeedVal = throttle - steering;
     float rightSpeedVal = throttle + steering;
@@ -77,8 +87,8 @@ void controlN20Motor(float ly, float lx) {
     int leftPWM = (int)(leftSpeedVal * MAX_PWM);
     int rightPWM = (int)(rightSpeedVal * MAX_PWM);
 
-    setMotor(leftPWM, N20_ENA, N20_IN1, N20_IN2); // 控制馬達A
-    setMotor(rightPWM, N20_ENB, N20_IN3, N20_IN4); // 控制馬達B
+    setMotor(leftPWM, N20_ENA, N20_IN1, N20_IN2);
+    setMotor(rightPWM, N20_ENB, N20_IN3, N20_IN4);
 
     if (abs(throttle) > 0 || abs(steering) > 0) {
         Serial.printf("L: %d | R: %d (Y:%.2f X:%.2f)\n", leftPWM, rightPWM, throttle, steering);
@@ -86,171 +96,145 @@ void controlN20Motor(float ly, float lx) {
 }
 
 void controlServoMotor() {
-    bool isPressedA = ble.getButtonA(); // 使用 A 鍵控制
-    bool isPressedY = ble.getButtonY(); // 使用 Y 鍵控制
-    bool isPressedX = ble.getButtonX(); // 使用 X 鍵控制
-    bool isPressedB = ble.getButtonB(); // 使用 B 鍵控制
-
-        //A
-        if (isPressedA) {
-            // --- 動作中 ---
-            // 根據方向緩慢增減角度
-            servoAngleA += (servoDirectionA * servoSpeed);
-            
-            // 邊界保護：防止超出 0~180 度
-            if (servoAngleA >= 180) {
-                servoAngleA = 180;
-                // 到達頂點時，如果還按著，可以選擇停住或自動反轉
-            } else if (servoAngleA <= 0) {
-                servoAngleA = 0;
-            }
-
-            ServoA.write((int)servoAngleA);
-            wasPressedA = true; // 標記目前正在按住
-        } 
-        else {
-            // --- 放開按鈕的一瞬間 ---
-            if (wasPressedA) {
-                // 只有在剛放開的那一刻，切換下一次的方向
-                servoDirectionA *= -1; 
-                wasPressedA = false; 
-                Serial.printf("放開按鈕，下次方向將反轉。目前角度: %.1f\n", servoAngleA);
-            }
+    bool isPressedA = ble.getButtonA();
+    bool isPressedY = ble.getButtonY();
+    bool isPressedX = ble.getButtonX();
+    bool isPressedB = ble.getButtonB();
+    bool isPressedLB = ble.getLB();
+    // A
+    if (isPressedA) {
+        servoAngleA += (servoDirectionA * servoSpeed);
+        if (servoAngleA >= 180) {
+            servoAngleA = 180;
+        } else if (servoAngleA <= 0) {
+            servoAngleA = 0;
         }
-
-        //Y
-        if (isPressedY) {
-            // --- 動作中 ---
-            // 根據方向緩慢增減角度
-            servoAngleY += (servoDirectionY * servoSpeed);
-            
-            // 邊界保護：防止超出 0~180 度
-            if (servoAngleY >= 180) {
-                servoAngleY = 180;
-                // 到達頂點時，如果還按著，可以選擇停住或自動反轉
-            } else if (servoAngleY <= 0) {
-                servoAngleY = 0;
-            }
-
-            ServoY.write((int)servoAngleY);
-            wasPressedY = true; // 標記目前正在按住
-        } 
-        else {
-            // --- 放開按鈕的一瞬間 ---
-            if (wasPressedY) {
-                // 只有在剛放開的那一刻，切換下一次的方向
-                servoDirectionY *= -1; 
-                wasPressedY = false; 
-                Serial.printf("放開按鈕，下次方向將反轉。目前角度: %.1f\n", servoAngleY);
-            }
+        ServoA.write((int)servoAngleA);
+        wasPressedA = true;
+    } else {
+        if (wasPressedA) {
+            servoDirectionA *= -1;
+            wasPressedA = false;
+            Serial.printf("A 放開，下次方向反轉，目前角度: %.1f\n", servoAngleA);
         }
+    }
 
-        //X
-        if (isPressedX) {
-            // --- 動作中 ---
-            // 根據方向緩慢增減角度
-            servoAngleX += (servoDirectionX * servoSpeed);
-            
-            // 邊界保護：防止超出 0~180 度
-            if (servoAngleX >= 180) {
-                servoAngleX = 180;
-                // 到達頂點時，如果還按著，可以選擇停住或自動反轉
-            } else if (servoAngleX <= 0) {
-                servoAngleX = 0;
-            }
-
-            ServoX.write((int)servoAngleX);
-            wasPressedX = true; // 標記目前正在按住
-        } 
-        else {
-            // --- 放開按鈕的一瞬間 ---
-            if (wasPressedX) {
-                // 只有在剛放開的那一刻，切換下一次的方向
-                servoDirectionX *= -1; 
-                wasPressedX = false; 
-                Serial.printf("放開按鈕，下次方向將反轉。目前角度: %.1f\n", servoAngleX);
-            }
+    // Y
+    if (isPressedY) {
+        servoAngleY += (servoDirectionY * servoSpeed);
+        if (servoAngleY >= 180) {
+            servoAngleY = 180;
+        } else if (servoAngleY <= 0) {
+            servoAngleY = 0;
         }
-
-        //B
-        if (isPressedB) {
-            // --- 動作中 ---
-            // 根據方向緩慢增減角度
-            servoAngleB += (servoDirectionB * servoSpeed);
-            
-            // 邊界保護：防止超出 0~180 度
-            if (servoAngleB >= 180) {
-                servoAngleB = 180;
-                // 到達頂點時，如果還按著，可以選擇停住或自動反轉
-            } else if (servoAngleB <= 0) {
-                servoAngleB = 0;
-            }
-
-            ServoB.write((int)servoAngleB);
-            wasPressedB = true; // 標記目前正在按住
-        } 
-        else {
-            // --- 放開按鈕的一瞬間 ---
-            if (wasPressedB) {
-                // 只有在剛放開的那一刻，切換下一次的方向
-                servoDirectionB *= -1; 
-                wasPressedB = false; 
-                Serial.printf("放開按鈕，下次方向將反轉。目前角度: %.1f\n", servoAngleB);
-            }
+        ServoY.write((int)servoAngleY);
+        wasPressedY = true;
+    } else {
+        if (wasPressedY) {
+            servoDirectionY *= -1;
+            wasPressedY = false;
+            Serial.printf("Y 放開，下次方向反轉，目前角度: %.1f\n", servoAngleY);
         }
+    }
+
+    // X
+    if (isPressedX) {
+        servoAngleX += (servoDirectionX * servoSpeed);
+        if (servoAngleX >= 180) {
+            servoAngleX = 180;
+        } else if (servoAngleX <= 0) {
+            servoAngleX = 0;
+        }
+        ServoX.write((int)servoAngleX);
+        wasPressedX = true;
+    } else {
+        if (wasPressedX) {
+            servoDirectionX *= -1;
+            wasPressedX = false;
+            Serial.printf("X 放開，下次方向反轉，目前角度: %.1f\n", servoAngleX);
+        }
+    }
+
+    // B
+    if (isPressedB) {
+        servoAngleB += (servoDirectionB * servoSpeed);
+        if (servoAngleB >= 180) {
+            servoAngleB = 180;
+        } else if (servoAngleB <= 0) {
+            servoAngleB = 0;
+        }
+        ServoB.write((int)servoAngleB);
+        wasPressedB = true;
+    } else {
+        if (wasPressedB) {
+            servoDirectionB *= -1;
+            wasPressedB = false;
+            Serial.printf("B 放開，下次方向反轉，目前角度: %.1f\n", servoAngleB);
+        }
+    }
+
+    // MG996R：LB 控制
+
+    if (isPressedLB && !lastLBState && (millis() - lastLBPress > DEBOUNCE)) {
+        // 切換狀態：停→正→反→停→...
+        if (mgTargetSpeed == 0.0f) {
+            mgTargetSpeed = 1.0f;  // 正轉
+            Serial.println("MG996R: 正轉啟動!");
+        } else if (mgTargetSpeed == 1.0f) {
+            mgTargetSpeed = -1.0f; // 反轉
+            Serial.println("MG996R: 反轉啟動!");
+        } else {
+            mgTargetSpeed = 0.0f;  // 停
+            Serial.println("MG996R: 停止!");
+        }
+        lastLBPress = millis();
+    }
+    
+    lastLBState = isPressedLB;
+    
+    // 按住時持續目標速度，放開立即停止
+    if (isPressedLB) {
+        mg996r.write(mgTargetSpeed);  // 持續輸出速度
+        Serial.printf("MG996R 持續速度: %.1f\n", mgTargetSpeed);
+    } else {
+        mg996r.stop();  // 放開立即停止
+    }
 }
 
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    
-    // 在舵機初始化前統一分配所有定時器
+
     ESP32PWM::allocateTimer(0);
     ESP32PWM::allocateTimer(1);
     ESP32PWM::allocateTimer(2);
     ESP32PWM::allocateTimer(3);
-    
-    ble.begin();           // BLE Xbox
-    ServoA.setupServoMotor();  // 舵機A
-    ServoY.setupServoMotor();  // 舵機Y
-    ServoX.setupServoMotor();  // 舵機X
-    ServoB.setupServoMotor();  // 舵機B
-    setupN20Motor();       // N20 馬達
-    
+
+    ble.begin();
+    ServoA.setupServoMotor();
+    ServoY.setupServoMotor();
+    ServoX.setupServoMotor();
+    ServoB.setupServoMotor();
+    mg996r.setupMG996R();
+    setupN20Motor();
 }
 
 void loop() {
-    ble.update();  // 必須更新狀態
-    
+    ble.update();
+
     if (ble.isConnected()) {
         float lx = ble.getLeftX();
         float ly = ble.getLeftY();
-        
-        
-        // ★★★ N20 馬達控制 ★★★
+
         controlN20Motor(ly, lx);
-        
-        // ★★★ 舵機控制 ★★★
         controlServoMotor();
 
-        //按鈕顯示
-        /*if (ble.getButtonA()) Serial.print(" | A ");
-        if (ble.getButtonB()) Serial.print(" | B ");
-        if (ble.getButtonX()) Serial.print(" | X ");
-        if (ble.getButtonY()) Serial.print(" | Y ");
-        if (ble.getLB()) Serial.print(" | LB ");
-        if (ble.getRB()) Serial.print(" | RB ");
-        if (ble.getDpadUp()) Serial.print(" | ↑ ");
-        if (ble.getDpadDown()) Serial.print(" | ↓ ");
-        if (ble.getDpadLeft()) Serial.print(" | ← ");
-        if (ble.getDpadRight()) Serial.print(" | → ");*/
-        
         Serial.println();
     } else {
-        Serial.print(".");  // 掃描中
-        analogWrite(N20_ENA, 0);  // 未連線停止 N20
+        Serial.print(".");
+        analogWrite(N20_ENA, 0);
         delay(500);
     }
-    
-    delay(50);  // 20Hz
+
+    delay(50);
 }
