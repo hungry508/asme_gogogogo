@@ -174,9 +174,10 @@ void controlServoMotor() {
     }
 
     // MG996R：LB 控制
-
+    // mgTargetSpeed=0（正轉）變 狀態變1
+    // mgTargetSpeed=1（反轉）變 狀態變2
+    // mgTargetSpeed=-1（停止）變 狀態變0
     if (isPressedLB && !lastLBState && (millis() - lastLBPress > DEBOUNCE)) {
-        // 切換狀態：停→正→反→停→...
         if (mgTargetSpeed == 0.0f) {
             mgTargetSpeed = 1.0f;  // 正轉
             Serial.println("MG996R: 正轉啟動!");
@@ -189,9 +190,9 @@ void controlServoMotor() {
         }
         lastLBPress = millis();
     }
-    
-    lastLBState = isPressedLB;
-    
+
+    lastLBState = isPressedLB;// 記錄當前狀態
+
     // 按住時持續目標速度，放開立即停止
     if (isPressedLB) {
         mg996r.write(mgTargetSpeed);  // 持續輸出速度
