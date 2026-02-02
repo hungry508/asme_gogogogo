@@ -22,7 +22,7 @@ void MG996R::write(float speed) {
 }
 
 void MG996R::stop() {
-    servo.write(90);
+    // servo.write(90);
     currentSpeed = 0.0f;
 }
 

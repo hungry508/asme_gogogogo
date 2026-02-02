@@ -9,6 +9,7 @@ private:
     Servo servo;
     int pin;
     float currentSpeed;
+    int neutral; 
 
 public:
     MG996R(int servoPin);
