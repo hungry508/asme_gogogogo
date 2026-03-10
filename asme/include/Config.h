@@ -19,7 +19,7 @@
 #define MG360_2_PIN 19  // 360度馬達 2 (Dpad Up/Down)
 
 // ================= 控制參數設定 =================
-const float SERVO_SPEED_STEP = 2.0;    // 180度舵機每步旋轉角度
+const float SERVO_SPEED_STEP = 1.0;    // 180度舵機每步旋轉角度
 const float MG360_RUN_SPEED = 0.5f;    // 360度舵機運轉速度 (0.0 ~ 1.0)
 const float JOYSTICK_DEADZONE = 0.15f; // 搖桿死區防抖
 
