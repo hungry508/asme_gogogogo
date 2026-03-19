@@ -59,8 +59,8 @@ void Task_Input(void *pvParameters) {
             else if (ble.getRB()) g_mg180_1_Dir = -1;
             else g_mg180_1_Dir = 0;
 
-            if (ble.getButtonY()) g_mg180_2_Dir = 1;
-            else if (ble.getButtonA()) g_mg180_2_Dir = -1;
+            if (ble.getButtonY()) g_mg180_2_Dir = -1;
+            else if (ble.getButtonA()) g_mg180_2_Dir = 1;
             else g_mg180_2_Dir = 0;
 
             // 360度 #1 (X/B)
