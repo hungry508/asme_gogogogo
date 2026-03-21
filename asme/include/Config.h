@@ -10,7 +10,7 @@
 #define N20_ENB 33
 #define N20_IN3 26
 #define N20_IN4 25
-#define MAX_PWM 100  // N20 最大輸出限速 (0-255)
+#define MAX_PWM 150  // N20 最大輸出限速 (0-255)
 
 // ================= MG996R 舵機腳位定義 =================
 #define MG180_1_PIN 23  // 180度馬達 1 (LB/RB)

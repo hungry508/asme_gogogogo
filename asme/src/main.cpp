@@ -51,8 +51,10 @@ void Task_Input(void *pvParameters) {
     for (;;) {
         ble.update(); 
         if (ble.isConnected()) {
-            g_joyLX = ble.getLeftX();
-            g_joyLY = ble.getLeftY();
+
+            //擴大搖桿輸出範圍以增加靈敏度
+            g_joyLX = ble.getLeftX()*0.6f;
+            g_joyLY = ble.getLeftY()*0.6f;
 
             // 180度控制
             if (ble.getLB()) g_mg180_1_Dir = 1;
