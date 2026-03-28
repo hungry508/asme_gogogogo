@@ -10,7 +10,7 @@
 #define N20_IN2 27   // 方向 2
 
 // 搖桿死區範圍
-#define DEADZONE 0.15f
+#define DEADZONE 0.25f
 
 class N20Motor {
 private:

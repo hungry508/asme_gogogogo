@@ -90,8 +90,10 @@ void Task_Motors(void *pvParameters) {
         // N20 車底盤
         float rawY = (abs(g_joyLY) > JOYSTICK_DEADZONE) ? g_joyLY : 0;
         float rawX = (abs(g_joyLX) > JOYSTICK_DEADZONE) ? g_joyLX : 0;
-        int leftPWM = (int)((rawY - rawX) * MAX_PWM);
+
+        int leftPWM = (int)((rawY - rawX) * MAX_PWM*1.2);
         int rightPWM = (int)((rawY + rawX) * MAX_PWM);
+
         setMotor(leftPWM, N20_ENA, N20_IN1, N20_IN2);
         setMotor(rightPWM, N20_ENB, N20_IN3, N20_IN4);
 
